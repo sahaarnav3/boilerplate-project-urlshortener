@@ -3,9 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 const dns = require('dns');
-const urlList = { 'forum.freecodecamp.org': 1 };
-const urlListWithValues = { 1 : 'forum.freecodecamp.org' };
-var counter = 2;
+const urlList = {};
+const urlListWithValues = {};
+var counter = 1;
 // Basic Configuration
 const port = process.env.PORT || 3000;
 
@@ -31,31 +31,32 @@ app.post("/api/shorturl", (req, res) => {
   // const url = String(req.body.url).split("://")[1];
   const url = String(req.body.url).split(":");
   var filteredUrl = "";
-  if(url[0] == "http" || url[0] === "https" || url[0] === "ftp") {
+  if (url[0] == "http" || url[0] === "https" || url[0] === "ftp") {
+    if (url[1].endsWith("/"))
+      return res.json({ url: "Invalid URL" });
     filteredUrl = url[1].replaceAll("/", "");
     // console.log(filteredUrl);
   } else {
-    res.json({ url: "Invalid URL" });
+    return res.json({ url: "Invalid URL" });
   }
   dns.lookup(filteredUrl, (err, addresses, family) => {
     if (err) {
       // console.log(err);
-      res.json({ url: "Invalid URL" });
-    } else {
-      if (!Object.keys(urlList).includes(url)){ 
-        urlList[filteredUrl] = counter;
-        urlListWithValues[counter] = filteredUrl;
-        counter++;
-      }
-      res.json({ original_url: req.body.url, short_url: urlList[filteredUrl] });
+      return res.json({ url: "Invalid URL" });
     }
+    if (!Object.keys(urlList).includes(url)) {
+      urlList[filteredUrl] = counter;
+      urlListWithValues[counter] = filteredUrl;
+      counter++;
+    }
+    res.json({ original_url: req.body.url, short_url: urlList[filteredUrl] });
   })
 });
 
 //below router will route to the website according to the code given 
 app.get("/api/shorturl/:value", (req, res) => {
-  if(!Object.keys(urlListWithValues).includes(req.params.value))
-    res.json({ error: "No short URL found for the given input" });
+  if (!Object.keys(urlListWithValues).includes(req.params.value))
+    return res.json({ error: "No short URL found for the given input" });
   res.redirect(`https://${urlListWithValues[req.params.value]}`);
 });
 
