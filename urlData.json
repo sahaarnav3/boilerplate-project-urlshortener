@@ -1,0 +1,15 @@
+{
+  "urlList": {
+    "www.google.com": 1,
+    "www.youtube.com": 2,
+    "www.facebook.com": 3,
+    "freeCodeCamp.org": 4
+  },
+  "urlListWithValues": {
+    "1": "www.google.com",
+    "2": "www.youtube.com",
+    "3": "www.facebook.com",
+    "4": "freeCodeCamp.org"
+  },
+  "counter": 5
+}
