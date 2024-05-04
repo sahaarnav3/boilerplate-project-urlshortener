@@ -1,55 +1,37 @@
-require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const app = express();
+const cors = require('cors');
 const dns = require('dns');
-const fs = require('fs');
-const path = require('path');
-let urlList;
-let urlListWithValues;
-let counter;
+const mongoose = require('mongoose');
+const Url = require('url-parse');
+require('dotenv').config();
 
-//Custom Functions -- 
-const writeDataToJSON = (data, filePath) => {
-  const jsonData = JSON.stringify(data, null, 2);
-  fs.writeFile(filePath, jsonData, (err) => {
-    if (err) {
-      console.err("Error Writing the json data to file:", err);
-    } else {
-      console.log("Data saved successfully to:", filePath);
-    }
-  });
+
+//Conneccting to mongodb server 
+try {
+  mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+  console.log("DB Connection Success..");
+}
+catch (error) {
+  console.log(error);
 }
 
-(function readDataFromJSON() {
-  try {
-    let jsonData = fs.readFileSync("./urlData.json", "utf-8");
-    jsonData = JSON.parse(jsonData);
-    console.log( "fetched json data..--", jsonData);
-    urlList = jsonData.urlList || {};
-    urlListWithValues = jsonData.urlListWithValues || {};
-    counter = jsonData.counter || 1;
-  } catch (error) {
-    if(error.code === "ENOENT") {
-      console.warn(" JSON File Not Found:", "./urlData.json");
-      return {};
-    } else {
-      console.log("Error reading JSON File..", error);
-      return {};
-    }
-  } 
-})();
-
+const urlListSchema = new mongoose.Schema({
+  full_url: String,
+  short_url: Number
+});
+let urlList = mongoose.model('urlList', urlListSchema);
 
 // Basic Configuration
 const port = process.env.PORT || 3000;
 app.use(cors());
-
 app.use('/public', express.static(`${process.cwd()}/public`));
 
 //middleware for parsing the header and body
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+
 
 app.get('/', function (req, res) {
   res.sendFile(process.cwd() + '/views/index.html');
@@ -62,36 +44,38 @@ app.get('/api/hello', function (req, res) {
 
 //Main router functioning 
 app.post("/api/shorturl", (req, res) => {
-  // const url = String(req.body.url).split("://")[1];
-  const url = String(req.body.url).split(":");
-  var filteredUrl = "";
-  if (url[0] == "http" || url[0] === "https" || url[0] === "ftp") {
-    if (url[1].endsWith("/"))
-      return res.json({ error: "invalid url" });
-    filteredUrl = url[1].replaceAll("/", "");
-  } else {
-    return res.json({ error: "invalid url" });
-  }
-  dns.lookup(filteredUrl, (err, addresses, family) => {
+  const parsedUrl = new Url(req.body.url);
+  console.log(parsedUrl);
+  dns.lookup(parsedUrl.host, async (err) => {
     if (err) {
-      // console.log(err);
+      console.log(err);
       return res.json({ error: "invalid url" });
     }
-    if (!(Object.keys(urlList).includes(filteredUrl))) {
-      urlList[filteredUrl] = counter;
-      urlListWithValues[counter] = filteredUrl;
-      counter++;
-      writeDataToJSON({ urlList, urlListWithValues, counter }, './urlData.json');
+    //Below will count the number of urls present in the data base.
+    try {
+      const counter = await urlList.countDocuments();
+      const ifPresent = await urlList.find({ full_url: parsedUrl.href });
+      if (ifPresent.length) 
+        return res.json({ "original_url": ifPresent[0].full_url, "short_url": ifPresent[0].short_url });
+    
+      const urlObj = new urlList({ full_url: parsedUrl.href, short_url: counter + 1 });
+      const returnedData = await urlObj.save();
+      res.json({ "original_url": returnedData.full_url, "short_url": returnedData.short_url });
     }
-    res.json({ original_url: req.body.url, short_url: urlList[filteredUrl] });
+    catch (error) {
+      console.log(error);
+      return res.send("something went wrong please try again")
+    }
   })
 });
 
 //below router will route to the website according to the code given 
-app.get("/api/shorturl/:short_url", (req, res) => {
-  if (!Object.keys(urlListWithValues).includes(req.params.short_url))
-    return res.json({ error: "No short URL found for the given input" });
-  res.redirect(`https://${urlListWithValues[req.params.short_url]}`);
+app.get("/api/shorturl/:short_url", async (req, res) => {
+  const shortUrl = parseInt(req.params.short_url);
+  const ifPresent = await urlList.find({ short_url: shortUrl });
+  if(ifPresent)
+      return res.redirect(ifPresent[0].full_url);
+  res.json({ "error": "No short URL found for the given input" });
 });
 
 app.listen(port, function () {
